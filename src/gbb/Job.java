@@ -1,14 +1,15 @@
 package gbb;
 
+import gbb.exploring.SearchStrategy;
+import gbb.exploring.SearchStrategyFactory;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * @author <a href="mailto:aurelian.hreapca@info.uaic.ro">Aurelian Hreapca</a> (created on 6/16/19)
@@ -90,7 +91,9 @@ public class Job {
      * for the current {@link Job}.
      */
     public void start() {
-        BlockingQueue<State> states = new LinkedBlockingQueue<>();
+        SearchStrategyFactory<State> searchStrategyFactory = new SearchStrategyFactory<>();
+        SearchStrategy<State> states = searchStrategyFactory.getInstance(configuration.getSearchStrategyType());
+
         ExecutorService slaves = Executors.newFixedThreadPool(configuration.getNumberOfExecutors());
 
         try {

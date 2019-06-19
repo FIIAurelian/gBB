@@ -1,10 +1,14 @@
 package gbb;
 
+import gbb.exploring.SearchStrategyType;
+
 /**
  * @author <a href="mailto:aurelian.hreapca@info.uaic.ro">Aurelian Hreapca</a> (created on 6/16/19)
  */
 public class Configuration {
+
     private int numberOfExecutors;
+    private SearchStrategyType searchStrategyType;
 
     /**
      * Default constructor.
@@ -31,10 +35,19 @@ public class Configuration {
     }
 
     /**
+     * Returns the search strategy type set.
+     * @return {@link SearchStrategyType}
+     */
+    public SearchStrategyType getSearchStrategyType() {
+        return searchStrategyType;
+    }
+
+    /**
      * Implementation of the Builder creational pattern.
      */
     public static final class Builder {
-        private int numberOfExecutors;
+        private int numberOfExecutors = 1;
+        private SearchStrategyType searchStrategyType = SearchStrategyType.DEPTH_FIRST_SEARCH;
 
         /**
          * Return {@link Builder} instance with the number of executors
@@ -48,6 +61,17 @@ public class Configuration {
         }
 
         /**
+         * Return {@link Builder} instance with the
+         * searching strategy type set.
+         * @param searchStrategyType strategy type for exploring states
+         * @return {@link Builder} instance
+         */
+        public Builder withSearchStrategy(SearchStrategyType searchStrategyType) {
+            this.searchStrategyType = searchStrategyType;
+            return this;
+        }
+
+        /**
          * Returns the corresponding {@link Configuration} instance
          * for the current {@link Builder} instance.
          * @return {@link Configuration}
@@ -55,6 +79,7 @@ public class Configuration {
         public Configuration build() {
             Configuration conf = new Configuration();
             conf.numberOfExecutors = this.numberOfExecutors;
+            conf.searchStrategyType = this.searchStrategyType;
 
             return conf;
         }
