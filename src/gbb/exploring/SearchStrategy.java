@@ -19,6 +19,12 @@ public interface SearchStrategy<T extends State> {
     boolean isEmpty();
 
     /**
+     * Returns the number of {@link State} in collection.
+     * @return number of {@link State} in collection
+     */
+    int size();
+
+    /**
      * Retrieves and removes the next {@link State}
      * that should be explored.
      * @return the next {@link State}, or null if

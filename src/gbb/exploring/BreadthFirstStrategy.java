@@ -25,6 +25,11 @@ public class BreadthFirstStrategy<T extends State> implements SearchStrategy<T> 
     }
 
     @Override
+    public int size() {
+        return queue.size();
+    }
+
+    @Override
     public T poll() {
         return queue.pollFirst();
     }

@@ -25,6 +25,11 @@ public class DepthFirstStrategy<T extends State> implements SearchStrategy<T> {
     }
 
     @Override
+    public int size() {
+        return stack.size();
+    }
+
+    @Override
     public T poll() {
         return stack.pollFirst();
     }

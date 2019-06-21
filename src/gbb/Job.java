@@ -1,5 +1,6 @@
 package gbb;
 
+import gbb.exceptions.StateException;
 import gbb.exploring.SearchStrategy;
 import gbb.exploring.SearchStrategyFactory;
 
@@ -89,6 +90,7 @@ public class Job {
     /**
      * Entry point for starting the computation
      * for the current {@link Job}.
+     * @throws StateException on issues with adding or retrieving a {@link State} to be explored.
      */
     public void start() {
         SearchStrategyFactory<State> searchStrategyFactory = new SearchStrategyFactory<>();
@@ -99,7 +101,7 @@ public class Job {
         try {
             states.put(this.initialState);
         } catch(InterruptedException exception) {
-            throw new RuntimeException(exception);
+            throw new StateException("Failed to add a next state.", exception);
         }
 
         while (!states.isEmpty()) {
@@ -109,8 +111,10 @@ public class Job {
                 for (State nextState : nextStates.get()) {
                     states.put(nextState);
                 }
-            } catch (InterruptedException | ExecutionException exception) {
-                throw new RuntimeException(exception);
+            } catch (InterruptedException interruptedException) {
+                throw new StateException("Failed to add a next state.", interruptedException);
+            } catch (ExecutionException executionException) {
+                throw new StateException("Failed to get the next state.", executionException);
             }
         }
 
@@ -159,7 +163,7 @@ public class Job {
      * Implementation of the Builder creational pattern.
      */
     public static final class Builder {
-        private Configuration configuration;
+        private Configuration configuration = new Configuration.Builder().build();
         private Class<? extends Task> task;
         private Map<String, Object[]> registeredArrays = new HashMap<>();
         private State initialState;

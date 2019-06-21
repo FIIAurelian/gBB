@@ -22,6 +22,7 @@ public class Configuration {
      */
     public Configuration(Configuration configuration) {
         this.numberOfExecutors = configuration.numberOfExecutors;
+        this.searchStrategyType = configuration.searchStrategyType;
     }
 
     /**
@@ -63,7 +64,7 @@ public class Configuration {
         /**
          * Return {@link Builder} instance with the
          * searching strategy type set.
-         * @param searchStrategyType strategy type for exploring states
+         * @param searchStrategyType strategy type for gbb.exploring states
          * @return {@link Builder} instance
          */
         public Builder withSearchStrategy(SearchStrategyType searchStrategyType) {

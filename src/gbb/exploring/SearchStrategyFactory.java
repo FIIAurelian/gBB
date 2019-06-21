@@ -33,7 +33,13 @@ public class SearchStrategyFactory<T extends State> {
         }
 
         try {
-            return searchStrategyByType.get(name).newInstance();
+            Class<? extends SearchStrategy> clazz = searchStrategyByType.get(name);
+
+            if (clazz == null) {
+                throw new IllegalArgumentException(String.format("No SearchStrategy found for name: %s", name));
+            }
+
+            return clazz.newInstance();
         } catch (InstantiationException | IllegalAccessException exception) {
             throw new IllegalArgumentException(String.format("The search strategy for the" +
                     " name: %s can not be instantiate.", name));
@@ -62,7 +68,11 @@ public class SearchStrategyFactory<T extends State> {
      * @param searchStrategy {@link SearchStrategy} to register
      * @throws IllegalArgumentException when the name value is already registered.
      */
-    public void registerSearchStrategy(String name, Class<? extends SearchStrategy<T>> searchStrategy) {
+    public void registerSearchStrategy(String name, Class<? extends SearchStrategy> searchStrategy) {
+        if (name == null) {
+            throw new IllegalArgumentException("A name for registering the SearchStrategy should be provided.");
+        }
+
         if (searchStrategyByType.containsKey(name)) {
             throw new IllegalArgumentException(String.format("A search strategy" +
                     " for name: %s is already registered.", name));
