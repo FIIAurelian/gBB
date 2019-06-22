@@ -13,6 +13,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * @author <a href="mailto:aurelian.hreapca@info.uaic.ro">Aurelian Hreapca</a> (created on 6/16/19)
@@ -107,9 +110,12 @@ public class Job {
             throw new StateException("Failed to add a next state.", exception);
         }
 
+        int exploredStates = 0;
+
         while (!(states.isEmpty() && futureStates.isEmpty())) {
             try {
                 State state = states.poll();
+                exploredStates++;
                 Future<Collection<State>> nextStates = slaves.submit(new RunnableTask(state, this.task, this));
                 futureStates.addLast(nextStates);
 
@@ -134,6 +140,8 @@ public class Job {
                 throw new StateException("Failed to get the next state.", executionException);
             }
         }
+
+        System.out.println("Explored states: " + exploredStates);
 
         slaves.shutdown();
     }
@@ -165,6 +173,21 @@ public class Job {
 
         synchronized (arr) {
             arr[position] = value;
+        }
+    }
+
+    /**
+     * Method for applying a function on
+     * a given position in a registered resource.
+     * @param name key for the resource
+     * @param function to be applied
+     * @param position array position in the resource
+     */
+    public void applyOnArray(String name, Function function, int position) {
+        Object[] arr = getArray(name);
+
+        synchronized (arr) {
+            arr[position] = function.apply(arr[position]);
         }
     }
 
