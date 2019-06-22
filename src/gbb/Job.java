@@ -4,7 +4,9 @@ import gbb.exceptions.StateException;
 import gbb.exploring.SearchStrategy;
 import gbb.exploring.SearchStrategyFactory;
 
+import java.util.ArrayDeque;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -94,6 +96,7 @@ public class Job {
      */
     public void start() {
         SearchStrategyFactory<State> searchStrategyFactory = new SearchStrategyFactory<>();
+        Deque<Future<Collection<State>>> futureStates = new ArrayDeque<>();
         SearchStrategy<State> states = searchStrategyFactory.getInstance(configuration.getSearchStrategyType());
 
         ExecutorService slaves = Executors.newFixedThreadPool(configuration.getNumberOfExecutors());
@@ -104,12 +107,26 @@ public class Job {
             throw new StateException("Failed to add a next state.", exception);
         }
 
-        while (!states.isEmpty()) {
-            State state = states.poll();
-            Future<Collection<State>> nextStates = slaves.submit(new RunnableTask(state, this.task, this));
+        while (!(states.isEmpty() && futureStates.isEmpty())) {
             try {
-                for (State nextState : nextStates.get()) {
-                    states.put(nextState);
+                State state = states.poll();
+                Future<Collection<State>> nextStates = slaves.submit(new RunnableTask(state, this.task, this));
+                futureStates.addLast(nextStates);
+
+                if (futureStates.peek().isDone()) {
+                    for (State nextState : futureStates.poll().get()) {
+                        states.put(nextState);
+                    }
+                }
+                
+                while (states.isEmpty()) {
+                    if (futureStates.isEmpty()) {
+                        break;
+                    }
+
+                    for (State nextState : futureStates.poll().get()) {
+                        states.put(nextState);
+                    }
                 }
             } catch (InterruptedException interruptedException) {
                 throw new StateException("Failed to add a next state.", interruptedException);
@@ -129,7 +146,7 @@ public class Job {
      */
     public Object queryArray(String name, int position) {
         Object[] arr = getArray(name);
-        Object result = null;
+        Object result;
         synchronized (arr) {
             result = arr[position];
         }
