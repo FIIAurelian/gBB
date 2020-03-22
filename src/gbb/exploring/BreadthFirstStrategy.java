@@ -2,8 +2,8 @@ package gbb.exploring;
 
 import gbb.State;
 
-import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * @author <a href="mailto:aurelian.hreapca@info.uaic.ro">Aurelian Hreapca</a> (created on 6/18/19)
@@ -16,7 +16,7 @@ public class BreadthFirstStrategy<T extends State> implements SearchStrategy<T> 
      * {@link BreadthFirstStrategy}.
      */
     public BreadthFirstStrategy() {
-        queue = new ArrayDeque<>();
+        queue = new ConcurrentLinkedDeque<>();
     }
 
     @Override

@@ -17,7 +17,7 @@ public class RunnableTaskTest {
 
     @Test (expected = TaskException.class)
     public void createRunnableTaskWithPrivateTaskTest() {
-        RunnableTask runnableTask = new RunnableTask(null, DummyTask.class, null);
+        RunnableTask runnableTask = new RunnableTask(null, new DummyTask(), null);
     }
 
     private static final class DummyTask extends Task<State> {

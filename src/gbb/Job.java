@@ -1,6 +1,7 @@
 package gbb;
 
 import gbb.exceptions.StateException;
+import gbb.exceptions.TaskException;
 import gbb.exploring.SearchStrategy;
 import gbb.exploring.SearchStrategyFactory;
 
@@ -9,10 +10,12 @@ import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -24,10 +27,12 @@ public class Job {
     private Configuration configuration;
     private Class<? extends Task> task;
     private Map<String, Object[]> registeredArrays;
+    private Map<String, Object[]> registeredLocks;
     private State initialState;
 
     /**
      * Constructor with configuration.
+     *
      * @param configuration configuration for the job
      */
     public Job(Configuration configuration) {
@@ -40,10 +45,12 @@ public class Job {
      */
     private Job() {
         registeredArrays = new HashMap<>();
+        registeredLocks = new HashMap<>();
     }
 
     /**
      * Method for get a copy of the {@link Configuration}.
+     *
      * The idea behind returning a copy is to guarantee
      * the immutability.
      * @return copy of the {@link Configuration}
@@ -54,6 +61,7 @@ public class Job {
 
     /**
      * Setter for the {@link Configuration} field.
+     *
      * The given object is not used directly to ensure immutability.
      * @param configuration to be set
      */
@@ -63,6 +71,7 @@ public class Job {
 
     /**
      * Setter for the {@link Task} implementation.
+     *
      * Should expose a constructor because it will be
      * instantiate through reflection.
      * @param task class for {@link Task} implementation
@@ -72,20 +81,23 @@ public class Job {
     }
 
     /**
-     * Method for registering a resource.
+     * Method for registering a resource array.
+     *
      * @param name key for the resource
      * @param arr array structure
      */
-    public void registerArray(String name, Object[] arr) {
+    public <T> void registerArray(String name, T[] arr) {
         if (registeredArrays.containsKey(name)) {
             throw new IllegalArgumentException("An array with the same name is already registered.");
         }
 
-        registeredArrays.put(name, new Object[arr.length]);
+        registeredArrays.put(name, arr.clone());
+        registeredLocks.put(name, createLockArray(arr.length));
     }
 
     /**
      * Setter for the initial state.
+     *
      * @param initialState initial state instance
      */
     public void setInitialState(State initialState) {
@@ -95,14 +107,16 @@ public class Job {
     /**
      * Entry point for starting the computation
      * for the current {@link Job}.
+     *
      * @throws StateException on issues with adding or retrieving a {@link State} to be explored.
      */
     public void start() {
+        Task taskInstance = getTaskInstance();
         SearchStrategyFactory<State> searchStrategyFactory = new SearchStrategyFactory<>();
-        Deque<Future<Collection<State>>> futureStates = new ArrayDeque<>();
+        Deque<Future<Void>> futureStates = new ArrayDeque<>();
         SearchStrategy<State> states = searchStrategyFactory.getInstance(configuration.getSearchStrategyType());
 
-        ExecutorService slaves = Executors.newFixedThreadPool(configuration.getNumberOfExecutors());
+        ExecutorService workers = Executors.newFixedThreadPool(configuration.getNumberOfExecutors());
 
         try {
             states.put(this.initialState);
@@ -110,68 +124,45 @@ public class Job {
             throw new StateException("Failed to add a next state.", exception);
         }
 
-        int exploredStates = 0;
-
         while (!(states.isEmpty() && futureStates.isEmpty())) {
-            try {
+            while (!states.isEmpty()) {
                 State state = states.poll();
-                exploredStates++;
-                Future<Collection<State>> nextStates = slaves.submit(new RunnableTask(state, this.task, this));
-                futureStates.addLast(nextStates);
+                Future<Void> future = workers.submit(
+                        new RunnableTask(state, taskInstance, nextStates -> addStates(states, nextStates)));
+                futureStates.addLast(future);
+            }
 
-                if (futureStates.peek().isDone()) {
-                    for (State nextState : futureStates.poll().get()) {
-                        states.put(nextState);
-                    }
-                }
-                
-                while (states.isEmpty()) {
-                    if (futureStates.isEmpty()) {
-                        break;
-                    }
-
-                    for (State nextState : futureStates.poll().get()) {
-                        states.put(nextState);
-                    }
-                }
-            } catch (InterruptedException interruptedException) {
-                throw new StateException("Failed to add a next state.", interruptedException);
-            } catch (ExecutionException executionException) {
-                throw new StateException("Failed to get the next state.", executionException);
+            while (!futureStates.isEmpty() && futureStates.peekFirst().isDone()) {
+                futureStates.pollFirst();
             }
         }
 
-        System.out.println("Explored states: " + exploredStates);
-
-        slaves.shutdown();
+        workers.shutdown();
     }
 
     /**
      * Method for querying an registered resource.
+     *
      * @param name key for the resource
      * @param position array position in the resource
      * @return value at the given position
      */
-    public Object queryArray(String name, int position) {
-        Object[] arr = getArray(name);
-        Object result;
-        synchronized (arr) {
-            result = arr[position];
-        }
-
-        return result;
+    public <T> T queryArray(String name, int position) {
+        T[] arr = getArray(name);
+        return arr[position];
     }
 
     /**
      * Method for updating an registered resource.
+     *
      * @param name key for the resource
      * @param value new value
      * @param position array position in the resource
      */
-    public void updateArray(String name, Object value, int position) {
-        Object[] arr = getArray(name);
+    public <T> void updateArray(String name, T value, int position) {
+        T[] arr = getArray(name);
 
-        synchronized (arr) {
+        synchronized (registeredLocks.get(name)[position]) {
             arr[position] = value;
         }
     }
@@ -179,6 +170,7 @@ public class Job {
     /**
      * Method for applying a function on
      * a given position in a registered resource.
+     *
      * @param name key for the resource
      * @param function to be applied
      * @param position array position in the resource
@@ -186,17 +178,46 @@ public class Job {
     public void applyOnArray(String name, Function function, int position) {
         Object[] arr = getArray(name);
 
-        synchronized (arr) {
+        synchronized (registeredLocks.get(name)[position]) {
             arr[position] = function.apply(arr[position]);
         }
     }
 
-    private Object[] getArray(String name) {
+    private void addStates(SearchStrategy<State> states, Collection<? extends State> nextStates) {
+        for (State nextState : nextStates) {
+            try {
+                states.put(nextState);
+            } catch (InterruptedException interruptedException) {
+                throw new StateException("Failed to add a next state.", interruptedException);
+            }
+        }
+    }
+
+    private <T> T[] getArray(String name) {
         if (!registeredArrays.containsKey(name)) {
             throw new IllegalArgumentException(String.format("No array found for the name: %s.", name));
         }
 
-        return registeredArrays.get(name);
+        return (T[]) registeredArrays.get(name);
+    }
+
+    private Object[] createLockArray(int length) {
+        Object[] lock = new Object[length];
+        for (int i = 0; i < lock.length; i++) {
+            lock[i] = new Object();
+        }
+        return lock;
+    }
+
+    private Task getTaskInstance() {
+        try {
+            Task taskInstance = task.newInstance();
+            taskInstance.setJob(this);
+            return taskInstance;
+        } catch (InstantiationException | IllegalAccessException exception) {
+            throw new TaskException(String.format("Failed to instantiate the Task: %s.", task.getName()),
+                    exception);
+        }
     }
 
     /**
@@ -211,6 +232,7 @@ public class Job {
         /**
          * Return {@link Builder} instance with the {@link Configuration}
          * field set.
+         *
          * @param configuration value for the {@link Configuration} field
          * @return {@link Builder} instance
          */
@@ -221,6 +243,7 @@ public class Job {
 
         /**
          * Returns {@link Builder} instance with the {@link Task} class set.
+         *
          * @param task class for {@link Task} implementation
          * @return {@link Builder} instance
          */
@@ -231,6 +254,7 @@ public class Job {
 
         /**
          * Returns {@link Builder} instance with a new resource registered.
+         *
          * @param name key for the resource
          * @param arr array structure
          * @return
@@ -240,12 +264,13 @@ public class Job {
                 throw new IllegalArgumentException("An array with the same name is already registered.");
             }
 
-            registeredArrays.put(name, arr);
+            registeredArrays.put(name, arr.clone());
             return this;
         }
 
         /**
          * Returns {@link Builder} instance with the initial state set.
+         *
          * @param initialState value for the initial state
          * @return {@link Builder} instance
          */
@@ -257,6 +282,7 @@ public class Job {
         /**
          * Returns the corresponding {@link Job} instance for the
          * current {@link Builder} instance.
+         *
          * @return {@link Job} instance
          */
         public Job build() {
